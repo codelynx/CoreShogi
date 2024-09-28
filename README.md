@@ -1,20 +1,20 @@
-# ShogibanKit
+# CoreShogi
 
 ![xcode](https://img.shields.io/badge/Xcode-16-blue)
 ![swift](https://img.shields.io/badge/Swift-5-orange.svg)
 ![license](https://img.shields.io/badge/License-MIT-yellow.svg)
 
-Shogi, or Japanese Chess, is based on very complex rules, and it is hard to implement all basic rules.  This ShogibanKit aims to implement such complex algorithm to find valid move or action, or to find out whether it is checkmate or not.  I also would like to state that ShogibanKit does not provide:
+CoreShogi is a library that aims to implement the complex rules of Shogi (Japanese Chess), focusing on providing core logic to validate moves, detect checkmates, and represent game states programmatically. CoreShogi has been introduced to enhance and streamline these functionalities, incorporating optimized algorithms for rule validation and state management.
 
-- Any Graphical User Interface
-- Any Artificial Intelligence
+CoreShogi does not provide any artificial intelligence but it provides search or query functionalities for checkmate.
 
 
-<font color="Silver">Status: Under Development</color>
+Status: Under Development
 
 * Now, Swift 5 ready
 
 ## Coding Experiment
+
 It would be controversial for sure, I tried using Japanese for class names, variable names, and others.  It is part of my experiment to see if coding with non English name would work or not, or impact of maintaining the code.  For example, all type of pieces is expressed as follows using Japanese. It would be natural and easier to read code or Shogi player programmers.
 
 ```.swift
@@ -55,10 +55,11 @@ Here is the list of common classes or types.
 |駒型 |enum |Type of piece (no front/back) |
 |駒面型 |enum |Type of piece (cares front/back) |
 |持駒型 |struct |Captured pieces |
-|先後型 |enum |Which player |
+|先手後手型 |enum |Which player |
 |升型 |enum |State of board position (which players which piece, or empty?) |
 |指手型 |enum |Describe the one movement |
 |局面型 |class |Snapshot of the state of game-board |
+|持駒表型 |dictionary |Keeps number of captured pieces |
 
 ## Describing position
 
@@ -77,7 +78,7 @@ I am not sure how to describe 先手, 後手 in English.  Black and White may be
 
 
 ```.swift
-enum 先後型 {
+enum 先手後手型 {
 	case 先手, 後手
 }
 ```
@@ -109,12 +110,14 @@ You find number of captured `駒` as follows.
 
 ```.swift
 let 先手持駒: 持駒型 = ...
-let 銀の持ち駒数 = 先手持駒[.銀]
+let 銀の持ち駒数 = 先手持駒[.銀] ?? 0
 ```
 
 ## Describing the state of game-borad
 
 `局面型` describes the snapshot of a game-board.  And each cell is described as `升型`.  
+
+Here is a example of how to describe the initial state of game board expressed by string. 
 
 ```.swift
 let 局面 = 局面型(string:
@@ -130,19 +133,132 @@ let 局面 = 局面型(string:
 			"|▲香|▲桂|▲銀|▲金|▲王|▲金|▲銀|▲桂|▲香|\r" +
 			"▲持駒:なし\r",
 		手番: .先手)
-
 ```
 
-Or you may provide `指手型` to execute to create the next game-borad state.
+This can be constructed by utility function
 
-
-```.swift
-let 前の局面: 局面型  = ...
-let 指手 = ...
-let 次の局面 = 局面型.指手を実行(指手)
+```
+let 初期局面 = 対局型(手合: .平手).局面
 ```
 
-You can also `print()` or `.string` property to extract string representation.  And this string can be used for `局面型(_,手番:)`.
+### Find contain type of cells 
+
+You may find certain type of cells, for example you can find a position of your `玉` piece, or all positions of your opponent's `桂` or `歩`.
+
+```swift
+let 初期局面: 局面型  = 対局型(手合: .平手).局面
+初期局面.探索(升群: [.先玉]) // 先手の玉を探索: [.５九]
+初期局面.探索(升群: [.後歩]) // 後手の歩を探索: [.９三, .８三, .７三, .６三, .５三, .４三, .３三, .２三, .１三]
+```
+
+### Find captured pieces for a player
+
+You can get the all captured pieces in the form of dictionary.
+
+```swift
+let 局面: 局面型 = ...
+局面.先手持駒 // eg: [.銀: 1, .歩: 2]
+局面.後手持駒 // eg: [.飛: 1, .角: 1, .香: 1]
+```
+
+### Find all possible positions where a piece can move
+
+You can find all possible positions that a piece specified by position. If you specify the position where no piece are placed, then it returns nothing.  You may specify a boolean options that positions can include places where your pieces are placed.  This option is useful to find when a piece are backed up by other pieces.
+
+```swift
+func 指定位置の駒が移動可能な位置列(指定位置: 位置型, 移動先が自駒の場合も含む: Bool) -> [位置型]
+```
+
+### Find all possible positions where any one of pieces on player's side can move
+
+You can find the all possible pieces that can be moved to specified position.  For example, you may use this to find check (王手) moves.
+
+```swift
+局面.全移動可能位置列(手番: .先手, 移動先が自駒の場合も含む: false)
+局面.全移動可能位置列(手番: .後手, 移動先が自駒の場合も含む: true)
+```
+
+### Find all possible moves that player can make
+
+```swift
+func 可能指手列(位置列: [位置型] = 位置型.allCases) -> [指手型]
+```
+
+You can find all possible moves such as moving a piece or placing a piece.  Other moves may technically foul.  It returns array of `指手型` that can be execute to compute the next game board state.
+
+
+```swift
+	let 指手列 = ある局面.可能指手列()
+```
+
+there are 3 types of `指手型`, movement (動), placement (打), end (終).
+
+
+### Make a move
+
+You may compute the next game-board state from `指手型`.  So you can make a random move by picking up from the result of `可能指手列()`, if you like.
+
+```swift
+	var 現局面: = ...
+	let 指手列 = 現局面.可能指手列()
+	if let 指手 = 指手列.randomElement() {
+		if let 次局面 = 局面.実行(指手: 指手) {
+			...
+		}
+	}
+```
+
+
+
+
+```swift
+func 探索(升群: Set<升型>) -> [位置型]
+```
+
+You may compute the next state of board by this function. Here is the how to find all possible move and pick a random move and execute it. 
+
+```swift
+	var 現局面: = ...
+	let 指手列 = 現局面.可能指手列()
+	if let 指手 = 指手列.randomElement() {
+		if let 次局面 = 局面.実行(指手: 指手) {
+			...
+		}
+	}
+```
+
+### Find all position where any one of pieces can move there
+
+
+```swift
+let 位置列 = 局面.指定位置に移動可能な駒の位置列(手番: .先手, 指定位置: .５一)
+```
+
+### Find all movements of from a position to destination position
+
+```swift
+func 駒が移動可能な位置列(手番: 先手後手型) -> [(元: 位置型, 先: 位置型)]
+```
+
+### Find all moves to check `王手`
+
+```swift
+let 指手列 = 局面.王手探索()
+```
+
+### Detect checkmate
+
+Check whether the player on this turn run into check mate situation.
+
+```swift
+if 局面.詰判定 {
+	// check mate
+}
+```
+
+### String representation
+
+Although, CoreShogi does not provide any user interface, it can be interact with text or string representation.  So you may print any game-board state to console, and that text represenation can me used to construct a game-board state.
 
 
 ```.swift
@@ -170,7 +286,7 @@ let 再現局面 = 局面(string, 手番: 手番)
 
 ## Describing moves and actions
 
-A move can be described with `指手型`. `指手型` three cases. `動` describes a piece move from one place to the other.  `打` describes place captured piece on the game-board at specific location. `投了` describes the checkmate or equivalent.  
+A move can be described with `指手型`. `指手型` three cases. `動` describes a movement of a piece from one place to the other.  `打` describes a placement of captured piece on the game-board at a specific position. `終` describes the situation where the game cannot continue, such as check-mate.
 
 ```.swift
 enum 指手型 {
@@ -191,19 +307,6 @@ var 局面 = 局面(string: 手合割型.平手初期盤面, 手番: .先手)
 For professional player, this `投了` state may be sufficient, but for amateur, `王` may be captured by careless mistake.  Therefore, extra end state should be added later on.
 
 
-`局面型` provides `全可能指手列()` method to find all possible legitimate moves. So you may iterate through each candidate to examine all moves.  You may also call `指手を実行()` for each moves, but it is not suitable for creating millions of instances recursively.
-
-```.swift
-let 局面: 局面型 = ...
-let 全可能指手 = 局面.全可能指手列()
-for 候補指手 in 全可能指手 {
-	if let 次の局面 = 局面(候補指手) {
-		// find one you like
-	} 
-}
-```
-
-
 # Some advanced methods and properties
 
 
@@ -214,46 +317,6 @@ let 局面: 局面型 = ...
 for 位置 in 局面 {
 	let マス = 局面[位置]
 	let 駒面 = マス.駒面
-}
-```
-
-* All positions that a piece at location can make move
-
-```.swift
-let 局面: 局面型 = ...
-let 位置列 = 局面.指定位置の駒の移動可能位置列(.５五) // only location
-let 指手列 = 局面.指定位置の駒の移動可能指手列(.５五)
-```
-
-* Find all positions of where specified type of piece are located
-
-```.swift
-let 局面: 局面型 = ...
-let 先手の桂の位置 = 局面.駒の位置列(.桂, 先後: .先手)
-```
-
-* Which pieces on game-board can make move to specified location?
-
-```.swift
-let 局面: 局面型 = ...
-let 味方の駒の位置列 = 局面.指定位置へ移動可能な全ての駒の位置列(.７六, 先後: .先手)
-let 敵味方双方の駒の位置列 = 局面.指定位置へ移動可能な全ての駒の位置列(.７六, 先後: nil)
-let 後手の移動指手列 = 局面.指定位置へ移動可能な全ての駒を移動させる指手列(.７六, .後手)
-```
-
-* Find all movies that can capture 王 (King).
-
-```.swift
-let 局面: 局面型 = ...
-let 王手列 = 局面.王手列(.先手)
-```
-
-* Checkmate? (needs more test)
-
-```.swift
-let 局面: 局面型 = ...
-if 局面.詰みか() {
-	// checkmate!
 }
 ```
 
@@ -280,25 +343,6 @@ for (vx, vy) in 駒面.角.移動可能なベクトル {
 }
 ```
 
-## Generating Image
-
-`局面型` provides extension to generate image.
-
-```.swift
-extension 局面型 {
-	func imageForSize(size: CGSize) -> CGImage
-}
-```
-
-Here is the code sample of how to generate an image from `局面型`, and a sample image that generated by this feature.
-
-```.swift
-let image = 局面.imageForSize(CGSizeMake(300, 300))
-```
-
-![image.tiff](https://qiita-image-store.s3.amazonaws.com/0/65634/7fad6b43-01f3-a73f-6433-cf6eba8ad75a.tiff)
-
-
 ## Some Tips
 
 In ShoogibanKit, textual expression for position can be used, and also, positions also can be printed on debug console in textual expression.  If you simply use Menlo, or Hiragino, it would not be a good experiences for programmers after all. 
@@ -322,10 +366,6 @@ https://github.com/adobe-fonts/source-han-code-jp
 * UnitTest - removed because it crashes (not sure may be Xcode issue)
 * may be some more
 
-
-## Other consideration
-
-* String representation of `局面型` does not include `手番`.  If `手番` is included, it is simple to go back and forth between `局面型` and `String`.
 
 ## Environment
 
